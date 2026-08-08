@@ -482,10 +482,10 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       )}
 
       {/* ÁREA PRINCIPAL */}
-      <main className="flex-1 p-8 overflow-y-auto relative">
+      <main onClick={() => setSidebarOpen(false)} className="flex-1 p-8 overflow-y-auto relative">
         {activeTab === 'calendario' && !sidebarOpen && (
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}
             className="fixed top-4 left-4 z-30 rounded-full bg-[#1e3a5f] p-3 text-white shadow-lg border border-[#2f5a7f] hover:bg-[#2f5a7f]"
             aria-label="Abrir menú"
           >

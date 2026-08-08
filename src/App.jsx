@@ -671,6 +671,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     ? menuSemanal
                         .filter(m => m?.dia === tomorrowName)
                         .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
+                    : []
                   
                   // Obtener ingredientes necesarios de forma segura
                   const ingredientesNecesarios = new Set()
@@ -874,7 +875,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                 placeholder="Nombre del producto (ej: Latas de atún)"
                 value={nuevoNombreProd}
                 onChange={(e) => setNuevoNombreProd(e.target.value)}
-                className="flex-1 min-w-[200px] bg-gray-50 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#4a7ba7] focus:ring-1 focus:ring-[#4a7ba7]"
+                className="flex-1 min-w-50 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#4a7ba7] focus:ring-1 focus:ring-[#4a7ba7]"
                 required
               />
               <select
@@ -1022,7 +1023,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                             >
                               -
                             </button>
-                            <span className={`px-3 text-sm font-bold min-w-[32px] text-center ${cant === 0 ? 'text-rose-400' : cant === 1 ? 'text-amber-400' : 'text-slate-100'}`}>
+                            <span className={`px-3 text-sm font-bold min-w-8 text-center ${cant === 0 ? 'text-rose-400' : cant === 1 ? 'text-amber-400' : 'text-slate-100'}`}>
                               {cant}
                             </span>
                             <button

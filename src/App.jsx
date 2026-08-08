@@ -73,7 +73,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
   function cambiarTab(tab) {
     setActiveTab(tab)
-    setSidebarOpen(tab !== 'calendario')
+    setSidebarOpen(false)
   }
 
   useEffect(() => {

@@ -396,8 +396,17 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     <div className="flex min-h-screen bg-[#f8f9fa] text-[#2c3e50] font-sans">
       
       {/* MENÚ LATERAL */}
-      {(activeTab !== 'calendario' || sidebarOpen) && (
-        <aside className="w-64 bg-[#1e3a5f] border-r border-[#2f5a7f] flex flex-col p-4 shadow-lg">
+      {/* Backdrop para móvil cuando el sidebar está abierto */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Aside: siempre presente, en móvil se muestra/oculta mediante transform */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#1e3a5f] border-r border-[#2f5a7f] flex flex-col p-4 shadow-lg transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:transform-none`}>
           <div className="mb-8 px-2 flex items-start justify-between gap-2">
             {activeTab === 'calendario' && (
               <button
@@ -482,7 +491,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       )}
 
       {/* ÁREA PRINCIPAL */}
-      <main onClick={() => setSidebarOpen(false)} className="flex-1 p-8 overflow-y-auto relative">
+      <main onClick={() => { if (sidebarOpen) setSidebarOpen(false); }} className="flex-1 p-8 overflow-y-auto relative">
         {activeTab === 'calendario' && !sidebarOpen && (
           <button
             onClick={(e) => { e.stopPropagation(); setSidebarOpen(true); }}

@@ -107,7 +107,10 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
   async function cargarListaCompra() {
     const { data } = await supabase.from('lista_compra').select('*').order('created_at', { ascending: false })
-    setListaCompra(data || [])
+    const ordenada = Array.isArray(data)
+      ? [...data].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }))
+      : []
+    setListaCompra(ordenada)
   }
 
   async function cargarRecetas() {
@@ -537,8 +540,12 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                 const todayName = DIAS_SEMANA[(dayIndex === 0 ? 6 : dayIndex - 1)]
                 const tomorrowName = DIAS_SEMANA[(tomorrowIndex === 0 ? 6 : tomorrowIndex - 1)]
                 
-                const platoHoy = menuSemanal.filter(m => m.dia === todayName)
-                const platoMañana = menuSemanal.filter(m => m.dia === tomorrowName)
+                const platoHoy = menuSemanal
+                  .filter(m => m.dia === todayName)
+                  .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
+                const platoMañana = menuSemanal
+                  .filter(m => m.dia === tomorrowName)
+                  .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
                 
                 // Función para verificar si faltan ingredientes
                 const faltanIngredientes = (recetaNombre) => {
@@ -655,8 +662,15 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   const todayName = DIAS_SEMANA[(dayIndex === 0 ? 6 : dayIndex - 1)]
                   const tomorrowName = DIAS_SEMANA[(tomorrowIndex === 0 ? 6 : tomorrowIndex - 1)]
                   
-                  const platoHoy = Array.isArray(menuSemanal) ? menuSemanal.filter(m => m?.dia === todayName) : []
-                  const platoMañana = Array.isArray(menuSemanal) ? menuSemanal.filter(m => m?.dia === tomorrowName) : []
+                  const platoHoy = Array.isArray(menuSemanal)
+                    ? menuSemanal
+                        .filter(m => m?.dia === todayName)
+                        .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
+                    : []
+                  const platoMañana = Array.isArray(menuSemanal)
+                    ? menuSemanal
+                        .filter(m => m?.dia === tomorrowName)
+                        .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
                   
                   // Obtener ingredientes necesarios de forma segura
                   const ingredientesNecesarios = new Set()
@@ -784,7 +798,9 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
                       <div className="space-y-4">
                         {['Almuerzo', 'Cena'].map((tipo) => {
-                          const itemsComida = comidasDelDia.filter(m => m.comida === tipo)
+                          const itemsComida = comidasDelDia
+                            .filter(m => m.comida === tipo)
+                            .sort((a, b) => (a.receta_nombre || '').localeCompare(b.receta_nombre || '', 'es', { sensitivity: 'base' }))
 
                           return (
                             <div key={tipo} className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 space-y-2">
@@ -1048,7 +1064,10 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                 <div className="p-12 text-center text-slate-500 text-sm">🎉 ¡No hay nada en la lista de la compra!</div>
               ) : (
                 <div className="divide-y divide-slate-700/60">
-                  {listaCompra.map((item) => (
+                  {listaCompra
+                    .slice()
+                    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }))
+                    .map((item) => (
                     <div key={item.id} className="p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors">
                       <div>
                         <h4 className="font-semibold text-white text-base">{item.nombre}</h4>

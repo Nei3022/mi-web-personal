@@ -871,7 +871,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
           <div className="max-w-4xl">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-white">📦 Catálogo de Productos</h2>
-              <p className="text-slate-400 text-sm">Toca un producto para enviarlo a la Alacena.</p>
+              <p className="text-slate-600 text-sm">Toca un producto para enviarlo a la Alacena.</p>
             </div>
 
             <form onSubmit={agregarProductoBase} className="bg-white border border-gray-300 rounded-2xl p-4 mb-6 flex flex-wrap md:flex-nowrap gap-3 shadow-sm">
@@ -983,7 +983,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                 <h3 className="font-semibold text-slate-200 text-lg">
                   Mostrando: <span className="text-[#4a7ba7]">{seccionActiva}</span>
                 </h3>
-                <span className="text-xs text-slate-400">{productosFiltradosAlacena.length} ítem(s)</span>
+                <span className="text-xs text-slate-200">{productosFiltradosAlacena.length} ítem(s)</span>
               </div>
 
               {productosFiltradosAlacena.length === 0 ? (
@@ -1008,7 +1008,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="text-xs text-slate-200 mt-1">
                             Ubicación: <span className="text-indigo-300 font-medium">📍 {item.seccion || 'Sin sección'}</span>
                           </p>
                         </div>
@@ -1024,7 +1024,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                           <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-1">
                             <button
                               onClick={() => cambiarCantidad(item.id, item.cantidad, -1, item.nombre, item.seccion)}
-                              className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white rounded-lg font-bold text-sm"
+                              className="w-7 h-7 flex items-center justify-center text-slate-200 hover:text-white rounded-lg font-bold text-sm"
                             >
                               -
                             </button>
@@ -1033,7 +1033,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                             </span>
                             <button
                               onClick={() => cambiarCantidad(item.id, item.cantidad, 1, item.nombre, item.seccion)}
-                              className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white rounded-lg font-bold text-sm"
+                              className="w-7 h-7 flex items-center justify-center text-slate-200 hover:text-white rounded-lg font-bold text-sm"
                             >
                               +
                             </button>

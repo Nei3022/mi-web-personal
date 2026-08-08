@@ -779,7 +779,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
           <div className="max-w-7xl space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-white">🗓️ Planificación Semanal</h2>
+                <h2 className="text-2xl font-bold text-[#1e3a5f]">🗓️ Planificación Semanal</h2>
                 <p className="text-gray-600 text-sm">Estado del menú de la semana y disponibilidad de stock en alacena.</p>
               </div>
               <button
@@ -870,7 +870,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
         {activeTab === 'productos' && (
           <div className="max-w-4xl">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white">📦 Catálogo de Productos</h2>
+              <h2 className="text-2xl font-bold text-[#1e3a5f]">📦 Catálogo de Productos</h2>
               <p className="text-slate-600 text-sm">Toca un producto para enviarlo a la Alacena.</p>
             </div>
 
@@ -942,7 +942,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
         {activeTab === 'alacena' && (
           <div className="max-w-4xl">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white">🥫 Mi Alacena</h2>
+              <h2 className="text-2xl font-bold text-[#1e3a5f]">🥫 Mi Alacena</h2>
               <p className="text-gray-600 text-sm">Gestiona el inventario de casa por secciones.</p>
             </div>
 
@@ -1056,7 +1056,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
         {activeTab === 'compra' && (
           <div className="max-w-4xl">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white">🛒 Lista de la Compra</h2>
+              <h2 className="text-2xl font-bold text-[#1e3a5f]">🛒 Lista de la Compra</h2>
               <p className="text-slate-400 text-sm">Lista de cosas pendientes por comprar.</p>
             </div>
 
@@ -1105,7 +1105,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
         {activeTab === 'recetas' && (
           <div className="max-w-5xl space-y-8">
             <div>
-              <h2 className="text-2xl font-bold text-white">📖 Gestor de Recetas y Menú</h2>
+              <h2 className="text-2xl font-bold text-[#1e3a5f]">📖 Gestor de Recetas y Menú</h2>
               <p className="text-slate-400 text-sm">Crea recetas y asígnalas a días específicos de la semana.</p>
             </div>
 
@@ -1237,7 +1237,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
             {/* LIBRO DE RECETAS */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
-              <h3 className="font-bold text-white text-lg mb-4">📖 Libro de Recetas Guardadas</h3>
+              <h3 className="font-bold text-[#e2e8f0] text-lg mb-4">📖 Libro de Recetas Guardadas</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {listaRecetas.length === 0 ? (
                   <p className="text-xs text-slate-500">No hay recetas creadas aún.</p>
@@ -1276,7 +1276,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       {productoSeleccionado && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-1">Añadir a la Alacena</h3>
+            <h3 className="text-lg font-bold text-[#e2e8f0] mb-1">Añadir a la Alacena</h3>
             <p className="text-indigo-400 font-semibold mb-4">{productoSeleccionado.nombre}</p>
 
             <form onSubmit={confirmarEnvioAAlacena} className="space-y-4">
@@ -1328,7 +1328,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       {itemAComprar && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-1">¿Cuántos has comprado?</h3>
+            <h3 className="text-lg font-bold text-[#e2e8f0] mb-1">¿Cuántos has comprado?</h3>
             <p className="text-emerald-400 font-semibold mb-4">🛒 {itemAComprar.nombre}</p>
 
             <form onSubmit={confirmarCompraFinal} className="space-y-4">

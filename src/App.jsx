@@ -68,7 +68,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
   const [tipoPlato, setTipoPlato] = useState('1º Plato')
   const [recetaSeleccionadaId, setRecetaSeleccionadaId] = useState('')
 
-  const SECCIONES = ['Despensa', 'Nevera', 'Congelador', 'Limpieza', 'Higiene']
+  const SECCIONES = ['Congelador', 'Despensa', 'Higiene', 'Limpieza', 'Nevera']
   const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
   function cambiarTab(tab) {
@@ -102,7 +102,10 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
   async function cargarAlacena() {
     const { data } = await supabase.from('alacena').select('*').order('created_at', { ascending: false })
-    setListaAlacena(data || [])
+    const ordenada = Array.isArray(data)
+      ? [...data].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }))
+      : []
+    setListaAlacena(ordenada)
   }
 
   async function cargarListaCompra() {
@@ -390,10 +393,12 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     if (!error) cargarListaCompra()
   }
 
-  const productosFiltradosAlacena = listaAlacena.filter((item) => {
-    if (seccionActiva === 'Todos') return true
-    return item.seccion && item.seccion.trim().toLowerCase() === seccionActiva.trim().toLowerCase()
-  })
+  const productosFiltradosAlacena = listaAlacena
+    .filter((item) => {
+      if (seccionActiva === 'Todos') return true
+      return item.seccion && item.seccion.trim().toLowerCase() === seccionActiva.trim().toLowerCase()
+    })
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }))
 
   return (
     <div className="flex min-h-screen bg-[#f8f9fa] text-[#2c3e50] font-sans">

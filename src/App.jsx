@@ -488,7 +488,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
             <p className="text-[#8ba3c0] text-[10px] truncate">{status}</p>
           </div>
         </aside>
-      )}
+      
 
       {/* ÁREA PRINCIPAL */}
       <main onClick={() => { if (sidebarOpen) setSidebarOpen(false); }} className="flex-1 p-8 overflow-y-auto relative">

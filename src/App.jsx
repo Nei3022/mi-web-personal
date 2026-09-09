@@ -613,11 +613,19 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
           estado: Number(producto.cantidad) <= 1 ? 'Aviso stock' : 'Suficiente'
         }])
       }
+
+      const productosCompraRelacionados = listaCompra.filter(item => (
+        item.nombre || '').trim().toLowerCase() === producto.nombre.trim().toLowerCase()
+      )
+      for (const itemCompra of productosCompraRelacionados) {
+        await supabase.from('lista_compra').delete().eq('id', itemCompra.id)
+      }
     }
 
     setTicketArchivo(null)
     setProductosTicket([])
     await cargarAlacena()
+    await cargarListaCompra()
     alert(`✅ ${productosValidos.length} producto(s) añadidos a la Alacena.`)
   }
 

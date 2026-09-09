@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supaClient'
 import homeBg from './assets/rinconcito.jpg'
+import { createWorker } from 'tesseract.js'
 
 function getWeekRange(date) {
   const current = new Date(date)
@@ -28,6 +29,27 @@ function getWeekRange(date) {
   }
 }
 
+function extraerProductosTicket(texto) {
+  const lineasIgnoradas = /^(total|subtotal|iva|impuestos?|efectivo|cambio|tarjeta|gracias|ticket|factura|fecha|hora|cliente|cajero|base imponible|forma de pago)/i
+  const productos = []
+
+  texto.split(/\r?\n/).forEach((linea) => {
+    let nombre = linea.replace(/\s+/g, ' ').trim()
+    if (!nombre || lineasIgnoradas.test(nombre)) return
+
+    const importe = nombre.match(/(?:\s|^)(\d{1,4}[,.]\d{2})\s*(?:€|EUR)?\s*$/i)
+    if (importe) nombre = nombre.slice(0, importe.index).trim()
+    nombre = nombre.replace(/^\d+[.)-]?\s*/, '').replace(/\s+[xX*]\s*\d+(?:[,.]\d+)?\s*$/, '').trim()
+
+    if (nombre.length < 3 || /^[-\d\s.,€]+$/.test(nombre) || /\b(total|subtotal|iva)\b/i.test(nombre)) return
+    const existente = productos.find(item => item.nombre.toLowerCase() === nombre.toLowerCase())
+    if (existente) existente.cantidad += 1
+    else productos.push({ nombre, cantidad: 1, seccion: 'Despensa' })
+  })
+
+  return productos
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('calendario')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -42,6 +64,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
   const [listaCompra, setListaCompra] = useState([])
   const [listaRecetas, setListaRecetas] = useState([])
   const [menuSemanal, setMenuSemanal] = useState([])
+  const [menuAEditar, setMenuAEditar] = useState(null)
 
   // Sub-sección activa dentro de Alacena
   const [seccionActiva, setSeccionActiva] = useState('Todos')
@@ -58,8 +81,16 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
   const [itemAComprar, setItemAComprar] = useState(null)
   const [cantidadComprada, setCantidadComprada] = useState(1)
 
+  // Importación de tickets
+  const [ticketProcesando, setTicketProcesando] = useState(false)
+  const [ticketArchivo, setTicketArchivo] = useState(null)
+  const [productosTicket, setProductosTicket] = useState([])
+  const [errorTicket, setErrorTicket] = useState('')
+
   // Formulario Nueva Receta
+  const [recetaEnEdicion, setRecetaEnEdicion] = useState(null)
   const [nombreReceta, setNombreReceta] = useState('')
+  const [preparacionReceta, setPreparacionReceta] = useState('')
   const [ingredientesReceta, setIngredientesReceta] = useState([{ nombre: '', cantidad: 1 }])
 
   // Formulario Programar Menú
@@ -137,6 +168,18 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     setIngredientesReceta(nuevosIngredientes)
   }
 
+  function obtenerIngredientes(receta) {
+    if (Array.isArray(receta)) return receta
+    if (typeof receta !== 'string') return []
+
+    try {
+      const ingredientes = JSON.parse(receta)
+      return Array.isArray(ingredientes) ? ingredientes : []
+    } catch {
+      return []
+    }
+  }
+
   async function guardarReceta(e) {
     e.preventDefault()
     if (!nombreReceta.trim()) return
@@ -148,19 +191,47 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       return
     }
 
-    // Enviamos el objeto diretamente o como JSON formateado según la columna
-    const { error } = await supabase.from('recetas').insert([
-      {
-        nombre: nombreReceta.trim(),
-        ingredientes: ingredientesValidos
-      }
-    ])
+    const ingredienteInvalido = ingredientesValidos.find(
+      ingrediente => !Number.isFinite(Number(ingrediente.cantidad)) || Number(ingrediente.cantidad) <= 0
+    )
+    if (ingredienteInvalido) {
+      alert(`Indica una cantidad válida para ${ingredienteInvalido.nombre}.`)
+      return
+    }
+
+    const datosReceta = {
+      nombre: nombreReceta.trim(),
+      preparacion: preparacionReceta.trim(),
+      ingredientes: ingredientesValidos
+    }
+    let { error } = recetaEnEdicion
+      ? await supabase.from('recetas').update(datosReceta).eq('id', recetaEnEdicion.id)
+      : await supabase.from('recetas').insert([datosReceta])
+
+    if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+      const datosSinPreparacion = { nombre: datosReceta.nombre, ingredientes: datosReceta.ingredientes }
+      const respuesta = recetaEnEdicion
+        ? await supabase.from('recetas').update(datosSinPreparacion).eq('id', recetaEnEdicion.id)
+        : await supabase.from('recetas').insert([datosSinPreparacion])
+      error = respuesta.error
+    }
 
     if (!error) {
+      const ingredientesSinStock = ingredientesValidos.filter(ingrediente => {
+        const ingredienteNormalizado = ingrediente.nombre.trim().toLowerCase()
+        return !listaAlacena.some(item => item.nombre.trim().toLowerCase() === ingredienteNormalizado)
+      })
+
+      for (const ingrediente of ingredientesSinStock) {
+        await agregarAListaCompraSilencioso(ingrediente.nombre.trim(), 'Despensa', ingrediente.cantidad.toString())
+      }
+
+      setRecetaEnEdicion(null)
       setNombreReceta('')
+      setPreparacionReceta('')
       setIngredientesReceta([{ nombre: '', cantidad: 1 }])
       cargarRecetas()
-      alert('¡Receta guardada con éxito! 📖')
+      alert(recetaEnEdicion ? '¡Receta modificada con éxito! 📖' : '¡Receta guardada con éxito! 📖')
     } else {
       console.error('Error Supabase:', error)
       alert('Error al guardar la receta: ' + error.message)
@@ -180,9 +251,17 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
         comida: comidaTipo,
         tipo_plato: tipoPlato,
         receta_id: recetaObj.id,
-        receta_nombre: recetaObj.nombre
+        receta_nombre: recetaObj.nombre,
+        ingredientes: typeof recetaObj.ingredientes === 'string'
+          ? JSON.parse(recetaObj.ingredientes)
+          : recetaObj.ingredientes
       }
     ])
+
+    if (error) {
+      alert(`No se pudo programar el menú. Ejecuta en Supabase: alter table menu_semanal add column if not exists ingredientes jsonb not null default '[]'::jsonb;\n\n${error.message}`)
+      return
+    }
 
     if (!error) {
       const ingredientes = typeof recetaObj.ingredientes === 'string' 
@@ -196,8 +275,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
           a => a.nombre.trim().toLowerCase() === ing.nombre.trim().toLowerCase()
         )
 
-        const cantEnAlacena = itemEnAlacena ? parseInt(itemEnAlacena.cantidad) || 0 : 0
-        const cantNecesaria = parseInt(ing.cantidad) || 1
+        const cantEnAlacena = itemEnAlacena ? parseFloat(itemEnAlacena.cantidad) || 0 : 0
+        const cantNecesaria = parseFloat(ing.cantidad) || 1
 
         if (cantEnAlacena < cantNecesaria) {
           const falta = cantNecesaria - cantEnAlacena
@@ -223,9 +302,63 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     if (!error) cargarMenuSemanal()
   }
 
+  function abrirEditorMenu(itemMenu, receta) {
+    const ingredientes = itemMenu.ingredientes || receta?.ingredientes || []
+    let ingredientesNormalizados = ingredientes
+    if (typeof ingredientes === 'string') {
+      try {
+        ingredientesNormalizados = JSON.parse(ingredientes)
+      } catch {
+        ingredientesNormalizados = []
+      }
+    }
+    setMenuAEditar({
+      ...itemMenu,
+      ingredientes: Array.isArray(ingredientesNormalizados)
+        ? ingredientesNormalizados.map(ingrediente => ({ ...ingrediente }))
+        : []
+    })
+  }
+
+  async function guardarCantidadesMenu(e) {
+    e.preventDefault()
+    if (!menuAEditar) return
+
+    const { error } = await supabase
+      .from('menu_semanal')
+      .update({ ingredientes: menuAEditar.ingredientes })
+      .eq('id', menuAEditar.id)
+
+    if (!error) {
+      setMenuAEditar(null)
+      cargarMenuSemanal()
+    } else {
+      alert(`No se pudieron guardar las cantidades. Ejecuta en Supabase: alter table menu_semanal add column if not exists ingredientes jsonb not null default '[]'::jsonb;\n\n${error.message}`)
+    }
+  }
+
   async function eliminarReceta(id) {
     const { error } = await supabase.from('recetas').delete().eq('id', id)
     if (!error) cargarRecetas()
+  }
+
+  function editarReceta(receta) {
+    const ingredientes = obtenerIngredientes(receta.ingredientes)
+
+    setRecetaEnEdicion(receta)
+    setNombreReceta(receta.nombre || '')
+    setPreparacionReceta(receta.preparacion || '')
+    setIngredientesReceta(ingredientes.length > 0
+      ? ingredientes.map(ingrediente => ({ ...ingrediente }))
+      : [{ nombre: '', cantidad: 1 }])
+    document.getElementById('formulario-receta')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function cancelarEdicionReceta() {
+    setRecetaEnEdicion(null)
+    setNombreReceta('')
+    setPreparacionReceta('')
+    setIngredientesReceta([{ nombre: '', cantidad: 1 }])
   }
 
   function comprobarEstadoIngredientes(ingredientesRaw) {
@@ -234,8 +367,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
     ingredientes.forEach(ing => {
       const item = listaAlacena.find(a => a.nombre.trim().toLowerCase() === ing.nombre.trim().toLowerCase())
-      const cantActual = item ? parseInt(item.cantidad) || 0 : 0
-      if (cantActual < (parseInt(ing.cantidad) || 1)) {
+      const cantActual = item ? parseFloat(item.cantidad) || 0 : 0
+      if (cantActual < (parseFloat(ing.cantidad) || 1)) {
         todoDisponible = false
       }
     })
@@ -282,7 +415,9 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
     if (existeEnAlacena) {
       const nuevaCantidadTotal = (parseInt(existeEnAlacena.cantidad) || 0) + cantNumerica
-      await supabase.from('alacena').update({ cantidad: nuevaCantidadTotal.toString() }).eq('id', existeEnAlacena.id)
+      await supabase.from('alacena').update({
+        cantidad: nuevaCantidadTotal.toString()
+      }).eq('id', existeEnAlacena.id)
     } else {
       await supabase.from('alacena').insert([
         {
@@ -302,16 +437,41 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
   }
 
   async function cambiarCantidad(id, cantidadActual, delta, nombreItem, seccionItem) {
-    const numActual = parseInt(cantidadActual) || 0
+    const numActual = parseFloat(cantidadActual) || 0
     const nuevaCant = Math.max(0, numActual + delta)
 
-    const { error } = await supabase.from('alacena').update({ cantidad: nuevaCant.toString() }).eq('id', id)
+    setListaAlacena(items => items.map(item => (
+      item.id === id ? { ...item, cantidad: nuevaCant.toString(), estado: nuevaCant <= 1 ? 'Aviso stock' : 'Suficiente' } : item
+    )))
+
+    const { error } = await supabase.from('alacena').update({
+      cantidad: nuevaCant.toString(),
+      estado: nuevaCant <= 1 ? 'Aviso stock' : 'Suficiente'
+    }).eq('id', id)
 
     if (!error) {
       if (nuevaCant === 0) {
         await agregarAListaCompraSilencioso(nombreItem, seccionItem, '1')
       }
-      cargarAlacena()
+      await cargarAlacena()
+    } else {
+      await cargarAlacena()
+      alert(`No se pudo actualizar la cantidad: ${error.message}`)
+    }
+  }
+
+  async function actualizarCantidadAlacena(id, cantidad) {
+    const cantidadNumerica = Math.max(0, parseFloat(cantidad) || 0)
+    const { error } = await supabase.from('alacena').update({
+      cantidad: cantidadNumerica.toString(),
+      estado: cantidadNumerica <= 1 ? 'Aviso stock' : 'Suficiente'
+    }).eq('id', id)
+
+    if (!error) {
+      await cargarAlacena()
+    } else {
+      await cargarAlacena()
+      alert(`No se pudo actualizar la cantidad: ${error.message}`)
     }
   }
 
@@ -381,6 +541,60 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     setItemAComprar(null)
     await cargarListaCompra()
     await cargarAlacena()
+  }
+
+  async function leerTicket() {
+    if (!ticketArchivo) return
+
+    setTicketProcesando(true)
+    setErrorTicket('')
+    setProductosTicket([])
+
+    try {
+      const worker = await createWorker('spa')
+      const { data: { text } } = await worker.recognize(ticketArchivo)
+      await worker.terminate()
+      const productos = extraerProductosTicket(text)
+
+      if (productos.length === 0) {
+        setErrorTicket('No se han encontrado productos. Prueba con una foto más nítida o añade los productos manualmente.')
+      }
+      setProductosTicket(productos)
+    } catch (error) {
+      console.error('Error leyendo el ticket:', error)
+      setErrorTicket('No se ha podido leer el ticket. Comprueba que sea una imagen válida.')
+    } finally {
+      setTicketProcesando(false)
+    }
+  }
+
+  async function añadirProductosDelTicket() {
+    const productosValidos = productosTicket.filter(producto => producto.nombre.trim() && Number(producto.cantidad) > 0)
+    if (productosValidos.length === 0) return
+
+    for (const producto of productosValidos) {
+      const existente = listaAlacena.find(item => item.nombre.trim().toLowerCase() === producto.nombre.trim().toLowerCase())
+      const cantidadNueva = (parseFloat(existente?.cantidad) || 0) + Number(producto.cantidad)
+
+      if (existente) {
+        await supabase.from('alacena').update({
+          cantidad: cantidadNueva.toString(),
+          estado: cantidadNueva <= 1 ? 'Aviso stock' : 'Suficiente'
+        }).eq('id', existente.id)
+      } else {
+        await supabase.from('alacena').insert([{
+          nombre: producto.nombre.trim(),
+          cantidad: Number(producto.cantidad).toString(),
+          seccion: producto.seccion || 'Despensa',
+          estado: Number(producto.cantidad) <= 1 ? 'Aviso stock' : 'Suficiente'
+        }])
+      }
+    }
+
+    setTicketArchivo(null)
+    setProductosTicket([])
+    await cargarAlacena()
+    alert(`✅ ${productosValidos.length} producto(s) añadidos a la Alacena.`)
   }
 
   async function eliminarDeAlacena(id) {
@@ -583,8 +797,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       a => a.nombre.trim().toLowerCase() === ing.nombre.trim().toLowerCase()
                     )
                     
-                    const cantEnAlacena = itemEnAlacena ? parseInt(itemEnAlacena.cantidad) || 0 : 0
-                    const cantNecesaria = parseInt(ing.cantidad) || 1
+                    const cantEnAlacena = itemEnAlacena ? parseFloat(itemEnAlacena.cantidad) || 0 : 0
+                    const cantNecesaria = parseFloat(ing.cantidad) || 1
                     
                     return cantEnAlacena < cantNecesaria
                   })
@@ -786,7 +1000,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                 onClick={() => setActiveTab('recetas')}
                 className="bg-[#4a7ba7] hover:bg-[#3a6a95] text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors shadow-md"
               >
-                + Programar / Crear Receta
+                + Programar / crear receta
               </button>
             </div>
 
@@ -819,7 +1033,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                               ) : (
                                 itemsComida.map((itemMenu) => {
                                   const recetaAsociada = listaRecetas.find(r => r.id.toString() === itemMenu.receta_id.toString())
-                                  const tieneTodo = recetaAsociada ? comprobarEstadoIngredientes(recetaAsociada.ingredientes) : false
+                                  const ingredientesPlanificados = itemMenu.ingredientes || recetaAsociada?.ingredientes || []
+                                  const tieneTodo = comprobarEstadoIngredientes(ingredientesPlanificados)
 
                                   return (
                                     <div key={itemMenu.id} className="bg-gray-100 border border-gray-300 rounded-lg p-2 flex flex-col justify-between gap-1.5">
@@ -842,13 +1057,22 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                                         }`}>
                                           {tieneTodo ? '✓ Listo' : '🛒 Falta stock'}
                                         </span>
-                                        <button
-                                          onClick={() => eliminarDelMenu(itemMenu.id)}
-                                          className="text-gray-500 hover:text-rose-400 text-[10px] px-1"
-                                          title="Quitar de la planificación"
-                                        >
-                                          ✕
-                                        </button>
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            onClick={() => abrirEditorMenu(itemMenu, recetaAsociada)}
+                                            className="text-[#4a7ba7] hover:text-[#2f5a7f] text-[10px] px-1"
+                                            title="Modificar cantidades"
+                                          >
+                                            ✎ Cantidades
+                                          </button>
+                                          <button
+                                            onClick={() => eliminarDelMenu(itemMenu.id)}
+                                            className="text-gray-500 hover:text-rose-400 text-[10px] px-1"
+                                            title="Quitar de la planificación"
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   )
@@ -946,6 +1170,88 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
               <p className="text-gray-600 text-sm">Gestiona el inventario de casa por secciones.</p>
             </div>
 
+            <div className="bg-white border border-gray-300 rounded-2xl p-5 mb-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="font-bold text-[#1e3a5f]">🧾 Añadir desde un ticket</h3>
+                  <p className="text-gray-500 text-xs mt-1">Sube una foto y revisa los productos antes de guardarlos.</p>
+                </div>
+                <label className="bg-[#4a7ba7] hover:bg-[#3a6a95] text-white rounded-xl px-4 py-2 text-sm font-medium cursor-pointer transition-colors">
+                  {ticketArchivo ? 'Cambiar foto' : 'Elegir foto'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      setTicketArchivo(e.target.files?.[0] || null)
+                      setProductosTicket([])
+                      setErrorTicket('')
+                    }}
+                  />
+                </label>
+              </div>
+
+              {ticketArchivo && (
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <span className="text-xs text-gray-600 truncate max-w-full">{ticketArchivo.name}</span>
+                  <button
+                    type="button"
+                    onClick={leerTicket}
+                    disabled={ticketProcesando}
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white rounded-xl px-4 py-2 text-xs font-medium transition-colors"
+                  >
+                    {ticketProcesando ? 'Leyendo ticket...' : 'Leer ticket'}
+                  </button>
+                </div>
+              )}
+
+              {errorTicket && <p className="text-rose-600 text-xs mb-3">{errorTicket}</p>}
+
+              {productosTicket.length > 0 && (
+                <div className="border-t border-gray-200 pt-4 space-y-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-semibold text-gray-700">Productos detectados</span>
+                    <span className="text-xs text-gray-500">Revisa nombres y cantidades</span>
+                  </div>
+                  {productosTicket.map((producto, index) => (
+                    <div key={`${producto.nombre}-${index}`} className="grid grid-cols-[1fr_5rem_7rem] gap-2 items-center">
+                      <input
+                        type="text"
+                        value={producto.nombre}
+                        onChange={(e) => setProductosTicket(productos => productos.map((item, itemIndex) => itemIndex === index ? { ...item, nombre: e.target.value } : item))}
+                        className="min-w-0 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs text-gray-900"
+                        aria-label={`Nombre del producto ${index + 1}`}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        value={producto.cantidad}
+                        onChange={(e) => setProductosTicket(productos => productos.map((item, itemIndex) => itemIndex === index ? { ...item, cantidad: e.target.value } : item))}
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-2 py-2 text-xs text-gray-900"
+                        aria-label={`Cantidad de ${producto.nombre}`}
+                      />
+                      <select
+                        value={producto.seccion}
+                        onChange={(e) => setProductosTicket(productos => productos.map((item, itemIndex) => itemIndex === index ? { ...item, seccion: e.target.value } : item))}
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-2 py-2 text-xs text-gray-900"
+                        aria-label={`Sección de ${producto.nombre}`}
+                      >
+                        {SECCIONES.map((seccion) => <option key={seccion} value={seccion}>{seccion}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={añadirProductosDelTicket}
+                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-2.5 text-sm font-medium transition-colors"
+                  >
+                    Añadir productos a la Alacena ✓
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2 mb-6">
               <button
                 onClick={() => setSeccionActiva('Todos')}
@@ -991,7 +1297,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
               ) : (
                 <div className="divide-y divide-slate-700/60">
                   {productosFiltradosAlacena.map((item) => {
-                    const cant = parseInt(item.cantidad) || 0
+                    const cant = parseFloat(item.cantidad) || 0
                     return (
                       <div key={item.id} className="p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:bg-slate-700/30 transition-colors">
                         <div className="flex-1">
@@ -1023,16 +1329,25 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
                           <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-1">
                             <button
-                              onClick={() => cambiarCantidad(item.id, item.cantidad, -1, item.nombre, item.seccion)}
+                              onClick={() => cambiarCantidad(item.id, cant, -1, item.nombre, item.seccion)}
                               className="w-7 h-7 flex items-center justify-center text-slate-200 hover:text-white rounded-lg font-bold text-sm"
                             >
                               -
                             </button>
-                            <span className={`px-3 text-sm font-bold min-w-8 text-center ${cant === 0 ? 'text-rose-400' : cant === 1 ? 'text-amber-400' : 'text-slate-100'}`}>
-                              {cant}
-                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={item.cantidad ?? 0}
+                              onChange={(e) => setListaAlacena(items => items.map(currentItem => (
+                                currentItem.id === item.id ? { ...currentItem, cantidad: e.target.value } : currentItem
+                              )))}
+                              onBlur={(e) => actualizarCantidadAlacena(item.id, e.target.value)}
+                              className={`w-20 bg-transparent px-2 text-sm font-bold text-center outline-none ${cant === 0 ? 'text-rose-400' : cant === 1 ? 'text-amber-400' : 'text-slate-100'}`}
+                              aria-label={`Cantidad de ${item.nombre}`}
+                            />
                             <button
-                              onClick={() => cambiarCantidad(item.id, item.cantidad, 1, item.nombre, item.seccion)}
+                              onClick={() => cambiarCantidad(item.id, cant, 1, item.nombre, item.seccion)}
                               className="w-7 h-7 flex items-center justify-center text-slate-200 hover:text-white rounded-lg font-bold text-sm"
                             >
                               +
@@ -1078,7 +1393,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       <div>
                         <h4 className="font-semibold text-white text-base">{item.nombre}</h4>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Cantidad necesaria: <span className="text-indigo-300 font-semibold">{item.cantidad || '1'}</span>
+                          Cantidad necesaria: <span className="text-indigo-300 font-semibold">{item.cantidad || '1'} unidades</span>
                         </p>
                       </div>
 
@@ -1111,18 +1426,25 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Formulario 1: Crear Receta */}
-              <form onSubmit={guardarReceta} className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4">
+              <form id="formulario-receta" onSubmit={guardarReceta} className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4">
                 <h3 className="font-bold text-indigo-400 flex items-center gap-2">
-                  <span>🍳</span> Crear Nueva Receta
+                  <span>🍳</span> {recetaEnEdicion ? 'Modificar receta' : 'Crear nueva receta'}
                 </h3>
 
                 <input
                   type="text"
-                  placeholder="Nombre (ej: Sopa de Picadillo)"
+                  placeholder="Nombre (p. ej.: Sopa de picadillo)"
                   value={nombreReceta}
                   onChange={(e) => setNombreReceta(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                   required
+                />
+
+                <textarea
+                  placeholder="Preparación (p. ej.: pela las patatas, mezcla los ingredientes y cocina...)"
+                  value={preparacionReceta}
+                  onChange={(e) => setPreparacionReceta(e.target.value)}
+                  className="w-full min-h-28 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                 />
 
                 <div className="space-y-2">
@@ -1131,7 +1453,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     <div key={idx} className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="Ingrediente (ej: Huevos)"
+                        placeholder="Ingrediente (p. ej.: huevos)"
+                        list="productos-receta"
                         value={ing.nombre}
                         onChange={(e) => manejarIngredienteChange(idx, 'nombre', e.target.value)}
                         className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
@@ -1140,6 +1463,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       <input
                         type="number"
                         min="1"
+                        step="any"
                         placeholder="Cant."
                         value={ing.cantidad}
                         onChange={(e) => manejarIngredienteChange(idx, 'cantidad', e.target.value)}
@@ -1148,6 +1472,11 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       />
                     </div>
                   ))}
+                  <datalist id="productos-receta">
+                    {listaProductos.map((producto) => (
+                      <option key={producto.id} value={producto.nombre} />
+                    ))}
+                  </datalist>
                   <button
                     type="button"
                     onClick={agregarCampoIngrediente}
@@ -1161,25 +1490,34 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   type="submit"
                   className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl text-sm transition-colors"
                 >
-                  Guardar Receta 📖
+                  {recetaEnEdicion ? 'Guardar cambios 📖' : 'Guardar Receta 📖'}
                 </button>
+                {recetaEnEdicion && (
+                  <button
+                    type="button"
+                    onClick={cancelarEdicionReceta}
+                    className="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 font-medium py-2 rounded-xl text-sm transition-colors"
+                  >
+                    Cancelar modificación
+                  </button>
+                )}
               </form>
 
               {/* Formulario 2: Programar en Menú */}
               <form onSubmit={programarEnMenu} className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4">
                 <h3 className="font-bold text-indigo-400 flex items-center gap-2">
-                  <span>📌</span> Programar Receta en la Semana
+                  <span>📌</span> Programar receta en la semana
                 </h3>
 
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Selecciona Receta</label>
+                  <label className="block text-xs text-slate-400 mb-1">Selecciona una receta</label>
                   <select
                     value={recetaSeleccionadaId}
                     onChange={(e) => setRecetaSeleccionadaId(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
                     required
                   >
-                    <option value="">-- Selecciona una receta --</option>
+                    <option value="">Selecciona una receta</option>
                     {listaRecetas.map((r) => (
                       <option key={r.id} value={r.id}>{r.nombre}</option>
                     ))}
@@ -1213,7 +1551,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Orden plato</label>
+                    <label className="block text-xs text-slate-400 mb-1">Orden del plato</label>
                     <select
                       value={tipoPlato}
                       onChange={(e) => setTipoPlato(e.target.value)}
@@ -1230,37 +1568,29 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   type="submit"
                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl text-sm transition-colors"
                 >
-                  Programar y Verificar Stock 🚀
+                  Programar y verificar el stock 🚀
                 </button>
               </form>
             </div>
 
             {/* LIBRO DE RECETAS */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
-              <h3 className="font-bold text-[#e2e8f0] text-lg mb-4">📖 Libro de Recetas Guardadas</h3>
+              <h3 className="font-bold text-[#e2e8f0] text-lg mb-4">📖 Libro de recetas guardadas</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {listaRecetas.length === 0 ? (
                   <p className="text-xs text-slate-500">No hay recetas creadas aún.</p>
                 ) : (
                   listaRecetas.map((r) => {
-                    const ings = typeof r.ingredientes === 'string' ? JSON.parse(r.ingredientes) : r.ingredientes
                     return (
-                      <div key={r.id} className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex flex-col justify-between">
-                        <div>
-                          <h4 className="font-bold text-indigo-300 text-sm mb-2">{r.nombre}</h4>
-                          <ul className="text-xs text-slate-400 space-y-1">
-                            {ings.map((ing, i) => (
-                              <li key={i}>• {ing.nombre} ({ing.cantidad})</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <button
-                          onClick={() => eliminarReceta(r.id)}
-                          className="mt-4 text-xs text-rose-400 hover:underline text-right"
-                        >
-                          Eliminar Receta
-                        </button>
-                      </div>
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => editarReceta(r)}
+                        className="bg-slate-900 border border-slate-700 hover:border-indigo-500 rounded-xl p-4 text-left transition-colors"
+                        title="Modificar receta"
+                      >
+                        <span className="font-bold text-indigo-300 text-sm">{r.nombre}</span>
+                      </button>
                     )
                   })
                 )}
@@ -1281,7 +1611,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
             <form onSubmit={confirmarEnvioAAlacena} className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Cantidad</label>
+                <label className="block text-xs text-slate-400 mb-1">Cantidad (unidades)</label>
                 <input
                   type="number"
                   min="1"
@@ -1333,7 +1663,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
             <form onSubmit={confirmarCompraFinal} className="space-y-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Unidades compradas</label>
+                <label className="block text-xs text-slate-400 mb-1">Cantidad comprada (unidades)</label>
                 <input
                   type="number"
                   min="1"
@@ -1358,6 +1688,59 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   className="flex-1 bg-emerald-600 text-white rounded-xl py-2.5 text-sm font-medium"
                 >
                   Guardar ✓
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {menuAEditar && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-lg font-bold text-[#e2e8f0] mb-1">Modificar cantidades</h3>
+            <p className="text-indigo-400 font-semibold mb-4">{menuAEditar.receta_nombre}</p>
+
+            <form onSubmit={guardarCantidadesMenu} className="space-y-3">
+              {menuAEditar.ingredientes.length === 0 && (
+                <p className="text-sm text-amber-300">
+                  Esta planificación no tiene ingredientes guardados. Vuelve a programarla después de ejecutar la migración de Supabase.
+                </p>
+              )}
+              {menuAEditar.ingredientes.map((ingrediente, index) => (
+                <div key={`${ingrediente.nombre}-${index}`} className="flex items-center gap-2">
+                  <span className="flex-1 text-sm text-slate-200">{ingrediente.nombre}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={ingrediente.cantidad}
+                    onChange={(e) => {
+                      const ingredientes = [...menuAEditar.ingredientes]
+                      ingredientes[index] = { ...ingredientes[index], cantidad: e.target.value }
+                      setMenuAEditar({ ...menuAEditar, ingredientes })
+                    }}
+                    className="w-24 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white"
+                    aria-label={`Cantidad de ${ingrediente.nombre}`}
+                    required
+                  />
+                  <span className="text-xs text-slate-400">unidades</span>
+                </div>
+              ))}
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setMenuAEditar(null)}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl py-2.5 text-sm font-medium"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-2.5 text-sm font-medium"
+                >
+                  Guardar cambios
                 </button>
               </div>
             </form>

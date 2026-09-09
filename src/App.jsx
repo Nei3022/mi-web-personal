@@ -52,7 +52,7 @@ function extraerProductosTicket(texto) {
     else productos.push({ nombre, cantidad, seccion: 'Despensa' })
   })
 
-  return productos
+  return productos.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
 }
 
 function App() {

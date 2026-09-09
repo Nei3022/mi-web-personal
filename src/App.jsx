@@ -137,6 +137,9 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
   const [itemAComprar, setItemAComprar] = useState(null)
   const [cantidadComprada, setCantidadComprada] = useState(1)
+  const [alacenaEnEdicion, setAlacenaEnEdicion] = useState(null)
+  const [nombreAlacenaEditado, setNombreAlacenaEditado] = useState('')
+  const [seccionAlacenaEditada, setSeccionAlacenaEditada] = useState('Despensa')
 
   // Importación de tickets
   const [ticketProcesando, setTicketProcesando] = useState(false)
@@ -531,6 +534,45 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       await cargarAlacena()
       alert(`No se pudo actualizar la cantidad: ${error.message}`)
     }
+  }
+
+  function iniciarEdicionAlacena(item) {
+    setAlacenaEnEdicion(item.id)
+    setNombreAlacenaEditado(item.nombre || '')
+    setSeccionAlacenaEditada(SECCIONES.includes(item.seccion) ? item.seccion : 'Despensa')
+  }
+
+  function cancelarEdicionAlacena() {
+    setAlacenaEnEdicion(null)
+    setNombreAlacenaEditado('')
+    setSeccionAlacenaEditada('Despensa')
+  }
+
+  async function guardarEdicionAlacena(e) {
+    e.preventDefault()
+    const nombre = nombreAlacenaEditado.trim()
+    if (!alacenaEnEdicion || !nombre) return
+
+    const nombreDuplicado = listaAlacena.some(item => (
+      item.id !== alacenaEnEdicion && item.nombre.trim().toLowerCase() === nombre.toLowerCase()
+    ))
+    if (nombreDuplicado) {
+      alert('Ya existe otro producto con ese nombre en la alacena.')
+      return
+    }
+
+    const { error } = await supabase.from('alacena').update({
+      nombre,
+      seccion: seccionAlacenaEditada
+    }).eq('id', alacenaEnEdicion)
+
+    if (error) {
+      alert(`No se pudo modificar el producto: ${error.message}`)
+      return
+    }
+
+    cancelarEdicionAlacena()
+    await cargarAlacena()
   }
 
   async function agregarAListaCompra(nombre, seccion, cantidad = '1') {
@@ -1449,9 +1491,38 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     const cant = parseFloat(item.cantidad) || 0
                     return (
                       <div key={item.id} className="p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 hover:bg-slate-700/30 transition-colors">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <h4 className="font-semibold text-white text-base">{item.nombre}</h4>
+                        <div className="flex-1 min-w-0">
+                          {alacenaEnEdicion === item.id ? (
+                            <form onSubmit={guardarEdicionAlacena} className="space-y-2 max-w-xl">
+                              <input
+                                type="text"
+                                value={nombreAlacenaEditado}
+                                onChange={(e) => setNombreAlacenaEditado(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                                aria-label="Nombre del producto"
+                                autoFocus
+                                required
+                              />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value={seccionAlacenaEditada}
+                                  onChange={(e) => setSeccionAlacenaEditada(e.target.value)}
+                                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white"
+                                  aria-label="Sección del producto"
+                                >
+                                  {SECCIONES.map((seccion) => <option key={seccion} value={seccion}>{seccion}</option>)}
+                                </select>
+                                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-3 py-2 text-xs font-medium">
+                                  Guardar
+                                </button>
+                                <button type="button" onClick={cancelarEdicionAlacena} className="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-semibold text-white text-base truncate">{item.nombre}</h4>
                             {cant === 0 && (
                               <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] px-2.5 py-0.5 rounded-full font-bold animate-pulse">
                                 ⚠️ ¡Agotado!
@@ -1462,10 +1533,13 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                                 ⚠️ ¡Queda 1!
                               </span>
                             )}
-                          </div>
-                          <p className="text-xs text-slate-200 mt-1">
-                            Ubicación: <span className="text-indigo-300 font-medium">📍 {item.seccion || 'Sin sección'}</span>
-                          </p>
+                            </div>
+                          )}
+                          {alacenaEnEdicion !== item.id && (
+                            <p className="text-xs text-slate-200 mt-1">
+                              Ubicación: <span className="text-indigo-300 font-medium">📍 {item.seccion || 'Sin sección'}</span>
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-3">
@@ -1475,6 +1549,16 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                           >
                             🛒 + Compra
                           </button>
+
+                          {alacenaEnEdicion !== item.id && (
+                            <button
+                              onClick={() => iniciarEdicionAlacena(item)}
+                              className="bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
+                              title={`Editar ${item.nombre}`}
+                            >
+                              ✎ Editar
+                            </button>
+                          )}
 
                           <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-1">
                             <button

@@ -33,7 +33,7 @@ function getWeekRange(date) {
 }
 
 function extraerProductosTicket(texto) {
-  const lineasIgnoradas = /^(total|subtotal|iva|impuestos?|efectivo|cambio|tarjeta|gracias|ticket|factura|fecha|hora|cliente|cajero|base imponible|forma de pago)/i
+  const lineasIgnoradas = /^(total|subtotal|iva|impuestos?|efectivo|cambio|tarjeta|gracias|ticket|factura|fecha|hora|cliente|cajero|base imponible|forma de pago|descuento|dto\.?|oferta|promocion|promoción)/i
   const productos = []
 
   texto.split(/\r?\n/).forEach((linea) => {
@@ -42,12 +42,14 @@ function extraerProductosTicket(texto) {
 
     const importe = nombre.match(/(?:\s|^)(\d{1,4}[,.]\d{2})\s*(?:€|EUR)?\s*$/i)
     if (importe) nombre = nombre.slice(0, importe.index).trim()
-    nombre = nombre.replace(/^\d+[.)-]?\s*/, '').replace(/\s+[xX*]\s*\d+(?:[,.]\d+)?\s*$/, '').trim()
+    const promocion = nombre.match(/(?:^|\s)(\d+)\s*[xX*]\s*(\d+)(?=\s|$)/)
+    const cantidad = promocion ? Number(promocion[1]) : 1
+    nombre = nombre.replace(/^\d+[.)-]?\s*/, '').replace(/\s+\d+\s*[xX*]\s*\d+(?:[,.]\d+)?\s*$/, '').trim()
 
-    if (nombre.length < 3 || /^[-\d\s.,€]+$/.test(nombre) || /\b(total|subtotal|iva)\b/i.test(nombre)) return
+    if (nombre.length < 3 || /^[-\d\s.,€]+$/.test(nombre) || /\b(total|subtotal|iva|descuento|dto\.?|oferta|promocion|promoción)\b/i.test(nombre)) return
     const existente = productos.find(item => item.nombre.toLowerCase() === nombre.toLowerCase())
-    if (existente) existente.cantidad += 1
-    else productos.push({ nombre, cantidad: 1, seccion: 'Despensa' })
+    if (existente) existente.cantidad += cantidad
+    else productos.push({ nombre, cantidad, seccion: 'Despensa' })
   })
 
   return productos

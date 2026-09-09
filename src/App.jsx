@@ -1238,7 +1238,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     <span className="text-xs text-gray-500">Revisa nombres y cantidades</span>
                   </div>
                   {productosTicket.map((producto, index) => (
-                    <div key={`${producto.nombre}-${index}`} className="grid grid-cols-[1fr_5rem_7rem] gap-2 items-center">
+                    <div key={`${producto.nombre}-${index}`} className="grid grid-cols-[1fr_5rem_7rem_auto] gap-2 items-center">
                       <input
                         type="text"
                         value={producto.nombre}
@@ -1263,6 +1263,15 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       >
                         {SECCIONES.map((seccion) => <option key={seccion} value={seccion}>{seccion}</option>)}
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => setProductosTicket(productos => productos.filter((_, itemIndex) => itemIndex !== index))}
+                        className="text-gray-500 hover:text-rose-600 px-2 py-2 text-sm transition-colors"
+                        title={`Eliminar ${producto.nombre}`}
+                        aria-label={`Eliminar ${producto.nombre}`}
+                      >
+                        🗑️
+                      </button>
                     </div>
                   ))}
                   <button

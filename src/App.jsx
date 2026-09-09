@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supaClient'
 import homeBg from './assets/rinconcito.jpg'
 import { createWorker } from 'tesseract.js'
+import * as pdfjsLib from 'pdfjs-dist'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
 function getWeekRange(date) {
   const current = new Date(date)
@@ -552,9 +555,29 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
     try {
       const worker = await createWorker('spa')
-      const { data: { text } } = await worker.recognize(ticketArchivo)
+      let textoCompleto = ''
+
+      if (ticketArchivo.type === 'application/pdf') {
+        const datosPdf = await ticketArchivo.arrayBuffer()
+        const pdf = await pdfjsLib.getDocument({ data: datosPdf }).promise
+
+        for (let numeroPagina = 1; numeroPagina <= pdf.numPages; numeroPagina += 1) {
+          const pagina = await pdf.getPage(numeroPagina)
+          const viewport = pagina.getViewport({ scale: 2 })
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+          const { data: { text } } = await worker.recognize(canvas)
+          textoCompleto += `${text}\n`
+        }
+      } else {
+        const { data: { text } } = await worker.recognize(ticketArchivo)
+        textoCompleto = text
+      }
+
       await worker.terminate()
-      const productos = extraerProductosTicket(text)
+      const productos = extraerProductosTicket(textoCompleto)
 
       if (productos.length === 0) {
         setErrorTicket('No se han encontrado productos. Prueba con una foto más nítida o añade los productos manualmente.')
@@ -1174,13 +1197,13 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
               <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                 <div>
                   <h3 className="font-bold text-[#1e3a5f]">🧾 Añadir desde un ticket</h3>
-                  <p className="text-gray-500 text-xs mt-1">Sube una foto y revisa los productos antes de guardarlos.</p>
+                  <p className="text-gray-500 text-xs mt-1">Sube una foto o PDF y revisa los productos antes de guardarlos.</p>
                 </div>
                 <label className="bg-[#4a7ba7] hover:bg-[#3a6a95] text-white rounded-xl px-4 py-2 text-sm font-medium cursor-pointer transition-colors">
                   {ticketArchivo ? 'Cambiar foto' : 'Elegir foto'}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,application/pdf"
                     className="hidden"
                     onChange={(e) => {
                       setTicketArchivo(e.target.files?.[0] || null)

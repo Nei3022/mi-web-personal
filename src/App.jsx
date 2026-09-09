@@ -55,6 +55,58 @@ function extraerProductosTicket(texto) {
   return productos.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
 }
 
+function normalizarNombreProducto(nombre) {
+  return nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b\d+(?:[,.]\d+)?\s*(?:kg|g|gr|l|ml|cl|ud|uds|unidad|unidades)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function sonNombresSimilares(nombreA, nombreB) {
+  const normalizadoA = normalizarNombreProducto(nombreA)
+  const normalizadoB = normalizarNombreProducto(nombreB)
+  if (!normalizadoA || !normalizadoB || normalizadoA === normalizadoB) return false
+
+  if (normalizadoA.includes(normalizadoB) || normalizadoB.includes(normalizadoA)) {
+    return Math.min(normalizadoA.length, normalizadoB.length) >= 5
+  }
+
+  if (Math.abs(normalizadoA.length - normalizadoB.length) > 2) return false
+  let anterior = Array.from({ length: normalizadoB.length + 1 }, (_, index) => index)
+  for (let indiceA = 1; indiceA <= normalizadoA.length; indiceA += 1) {
+    const actual = [indiceA]
+    for (let indiceB = 1; indiceB <= normalizadoB.length; indiceB += 1) {
+      actual[indiceB] = Math.min(
+        actual[indiceB - 1] + 1,
+        anterior[indiceB] + 1,
+        anterior[indiceB - 1] + (normalizadoA[indiceA - 1] === normalizadoB[indiceB - 1] ? 0 : 1)
+      )
+    }
+    anterior = actual
+  }
+
+  return anterior[normalizadoB.length] <= 2
+}
+
+function obtenerSugerenciasAgrupacion(productos, rechazadas) {
+  const sugerencias = []
+  for (let indiceA = 0; indiceA < productos.length; indiceA += 1) {
+    for (let indiceB = indiceA + 1; indiceB < productos.length; indiceB += 1) {
+      const productoA = productos[indiceA]
+      const productoB = productos[indiceB]
+      const nombres = [normalizarNombreProducto(productoA.nombre), normalizarNombreProducto(productoB.nombre)].sort()
+      const clave = nombres.join('|')
+      if (sonNombresSimilares(productoA.nombre, productoB.nombre) && !rechazadas.includes(clave)) {
+        sugerencias.push({ clave, indiceA, indiceB, productoA, productoB })
+      }
+    }
+  }
+  return sugerencias
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('calendario')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -91,6 +143,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
   const [ticketArchivo, setTicketArchivo] = useState(null)
   const [productosTicket, setProductosTicket] = useState([])
   const [errorTicket, setErrorTicket] = useState('')
+  const [sugerenciasRechazadas, setSugerenciasRechazadas] = useState([])
 
   // Formulario Nueva Receta
   const [recetaEnEdicion, setRecetaEnEdicion] = useState(null)
@@ -554,6 +607,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
     setTicketProcesando(true)
     setErrorTicket('')
     setProductosTicket([])
+    setSugerenciasRechazadas([])
 
     try {
       const worker = await createWorker('spa')
@@ -626,9 +680,32 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
 
     setTicketArchivo(null)
     setProductosTicket([])
+    setSugerenciasRechazadas([])
     await cargarAlacena()
     await cargarListaCompra()
     alert(`✅ ${productosValidos.length} producto(s) añadidos a la Alacena.`)
+  }
+
+  function agruparProductosTicket(sugerencia) {
+    setProductosTicket(productos => {
+      const productoA = productos[sugerencia.indiceA]
+      const productoB = productos[sugerencia.indiceB]
+      if (!productoA || !productoB) return productos
+
+      const agrupado = {
+        ...productoA,
+        cantidad: Number(productoA.cantidad) + Number(productoB.cantidad)
+      }
+      return productos
+        .filter((_, indice) => indice !== sugerencia.indiceB)
+        .map((producto, indice) => indice === sugerencia.indiceA ? agrupado : producto)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }))
+    })
+    setSugerenciasRechazadas(rechazadas => rechazadas.filter(clave => clave !== sugerencia.clave))
+  }
+
+  function rechazarAgrupacionTicket(clave) {
+    setSugerenciasRechazadas(rechazadas => [...rechazadas, clave])
   }
 
   async function eliminarDeAlacena(id) {
@@ -1220,6 +1297,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                       setTicketArchivo(e.target.files?.[0] || null)
                       setProductosTicket([])
                       setErrorTicket('')
+                      setSugerenciasRechazadas([])
                     }}
                   />
                 </label>
@@ -1247,6 +1325,34 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     <span className="text-xs font-semibold text-gray-700">Productos detectados</span>
                     <span className="text-xs text-gray-500">Revisa nombres y cantidades</span>
                   </div>
+                  {obtenerSugerenciasAgrupacion(productosTicket, sugerenciasRechazadas).length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-800">Posibles productos repetidos</p>
+                      {obtenerSugerenciasAgrupacion(productosTicket, sugerenciasRechazadas).map((sugerencia) => (
+                        <div key={sugerencia.clave} className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+                          <span>
+                            ¿Agrupar <strong>{sugerencia.productoA.nombre}</strong> ({sugerencia.productoA.cantidad}) con <strong>{sugerencia.productoB.nombre}</strong> ({sugerencia.productoB.cantidad})?
+                          </span>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => agruparProductosTicket(sugerencia)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-2.5 py-1.5 font-medium"
+                            >
+                              Agrupar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rechazarAgrupacionTicket(sugerencia.clave)}
+                              className="bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg px-2.5 py-1.5 font-medium"
+                            >
+                              Mantener separados
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {productosTicket.map((producto, index) => (
                     <div key={`ticket-producto-${index}`} className="grid grid-cols-[1fr_5rem_7rem_auto] gap-2 items-center">
                       <input

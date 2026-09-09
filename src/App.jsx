@@ -557,7 +557,8 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
       const worker = await createWorker('spa')
       let textoCompleto = ''
 
-      if (ticketArchivo.type === 'application/pdf') {
+      const esPdf = ticketArchivo.type === 'application/pdf' || ticketArchivo.name.toLowerCase().endsWith('.pdf')
+      if (esPdf) {
         const datosPdf = await ticketArchivo.arrayBuffer()
         const pdf = await pdfjsLib.getDocument({ data: datosPdf }).promise
 
@@ -1203,7 +1204,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                   {ticketArchivo ? 'Cambiar foto' : 'Elegir foto'}
                   <input
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="image/*,.pdf,application/pdf"
                     className="hidden"
                     onChange={(e) => {
                       setTicketArchivo(e.target.files?.[0] || null)

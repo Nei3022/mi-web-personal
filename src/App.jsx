@@ -1238,7 +1238,7 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                     <span className="text-xs text-gray-500">Revisa nombres y cantidades</span>
                   </div>
                   {productosTicket.map((producto, index) => (
-                    <div key={`${producto.nombre}-${index}`} className="grid grid-cols-[1fr_5rem_7rem_auto] gap-2 items-center">
+                    <div key={`ticket-producto-${index}`} className="grid grid-cols-[1fr_5rem_7rem_auto] gap-2 items-center">
                       <input
                         type="text"
                         value={producto.nombre}

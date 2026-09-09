@@ -1553,10 +1553,10 @@ const [fechaCalendario, setFechaCalendario] = useState(new Date())
                           {alacenaEnEdicion !== item.id && (
                             <button
                               onClick={() => iniciarEdicionAlacena(item)}
-                              className="bg-slate-700 hover:bg-indigo-600 text-slate-200 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors"
                               title={`Editar ${item.nombre}`}
                             >
-                              ✎ Editar
+                              ✎ Modificar
                             </button>
                           )}
 
